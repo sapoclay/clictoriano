@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 
 class ClicToris:
-    def __init__(self, url, intervalo_min=5, intervalo_max=10, modo_headless=False, max_clicks=None, chrome_path=None, external_links_policy='new_tab', link_wait=10):
+    def __init__(self, url, intervalo_min=5, intervalo_max=10, modo_headless=False, max_clicks=None, chrome_path=None, external_links_policy='new_tab', link_wait=10, browser='chrome'):
         """
         Inicializa el programa de clic automático
         
@@ -47,6 +47,8 @@ class ClicToris:
         self.dominio_base = f"{parsed_url.scheme}://{parsed_url.netloc}"
         # Ruta explícita opcional al binario de Chrome (puede venir por CLI o variable de entorno)
         self.chrome_path = chrome_path
+        # Browser: 'chrome' | 'chromium' | 'firefox'
+        self.browser = (browser or 'chrome').lower()
         # Política para manejar enlaces externos: 'new_tab' | 'same_window' | 'ignore'
         self.external_policy = external_links_policy
         # Política para hacer scroll antes de clicar: 'none'|'small'|'medium'|'full'|'random'
@@ -103,7 +105,7 @@ class ClicToris:
             pass
         
     def iniciar_navegador(self):
-        """Inicializa el navegador Chrome/Chromium"""
+        """Inicializa el navegador según la opción `browser` (chrome/chromium/firefox)"""
         import os
         import subprocess
         
@@ -123,6 +125,35 @@ class ClicToris:
                         except Exception:
                             pass
                         self.driver = None
+            # Si el usuario pidió Firefox, usar FirefoxOptions y el driver correspondiente
+            if self.browser == 'firefox':
+                from selenium.webdriver.firefox.options import Options as FirefoxOptions
+                from selenium.webdriver.firefox.service import Service as FirefoxService
+                firefox_options = FirefoxOptions()
+                if self.modo_headless:
+                    firefox_options.headless = True
+                # Intentar localizar binario de Firefox si se indicó chrome_path o variables de entorno
+                ff_env_candidates = [
+                    self.chrome_path,
+                    os.getenv('FIREFOX_BIN'),
+                    os.getenv('FIREFOX_PATH'),
+                ]
+                ff_bin = next((p for p in ff_env_candidates if p), None)
+                if ff_bin and os.path.isfile(ff_bin):
+                    try:
+                        firefox_options.binary_location = ff_bin
+                        print(f"⚙️  Usando ruta de Firefox especificada: {ff_bin}")
+                    except Exception:
+                        pass
+                try:
+                    # Dejar que Selenium Manager maneje geckodriver si es necesario
+                    self.driver = webdriver.Firefox(options=firefox_options)
+                    print(f"✓ Firefox iniciado correctamente")
+                    return True
+                except Exception as e:
+                    print(f"⚠️  Error iniciando Firefox: {e}")
+                    raise e
+
             chrome_options = Options()
             if self.modo_headless:
                 chrome_options.add_argument('--headless=new')
@@ -174,21 +205,38 @@ class ClicToris:
             else:
                 # Lista de rutas comunes según el SO
                 if sistema == "Windows":
-                    posibles = [
-                        r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-                        r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-                        os.path.expanduser(r"~\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe")
-                    ]
+                    # Si el usuario pidió 'chromium', priorizar rutas de Chromium
+                    if self.browser == 'chromium':
+                        posibles = [
+                            r"C:\\Program Files\\Chromium\\Application\\chrome.exe",
+                            r"C:\\Program Files (x86)\\Chromium\\Application\\chrome.exe",
+                            r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+                        ]
+                    else:
+                        posibles = [
+                            r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+                            r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+                            os.path.expanduser(r"~\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe")
+                        ]
                 else:
-                    posibles = [
-                        '/usr/bin/google-chrome',
-                        '/opt/google/chrome/google-chrome',
-                        '/usr/bin/chromium',
-                        '/usr/bin/chromium-browser',
-                        '/snap/bin/chromium',
-                        '/usr/bin/google-chrome-stable',
-                        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'  # macOS
-                    ]
+                    # En Unix-like, si el usuario pidió 'chromium' priorizar binarios de chromium
+                    if self.browser == 'chromium':
+                        posibles = [
+                            '/usr/bin/chromium',
+                            '/usr/bin/chromium-browser',
+                            '/snap/bin/chromium',
+                            '/usr/bin/google-chrome',
+                        ]
+                    else:
+                        posibles = [
+                            '/usr/bin/google-chrome',
+                            '/opt/google/chrome/google-chrome',
+                            '/usr/bin/chromium',
+                            '/usr/bin/chromium-browser',
+                            '/snap/bin/chromium',
+                            '/usr/bin/google-chrome-stable',
+                            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'  # macOS
+                        ]
                 # Probar y registrar el resultado de cada ruta candidata (útil para diagnóstico)
                 revisadas = []
                 for p in posibles:
@@ -676,6 +724,14 @@ Ejemplos de uso:
         help='Tiempo máximo (segundos) a esperar para que aparezcan enlaces dinámicos tras la carga (default: 10)'
     )
 
+    parser.add_argument(
+        '--browser',
+        dest='browser',
+        choices=['chrome', 'chromium', 'firefox'],
+        default='chrome',
+        help='Navegador a usar: chrome (por defecto), chromium o firefox'
+    )
+
     args = parser.parse_args()
 
     # Validar la URL
@@ -724,7 +780,7 @@ Ejemplos de uso:
         chrome_path=args.chrome_path,
         external_links_policy=policy,
         link_wait=link_wait,
-        
+        browser=args.browser,
     )
     # Aplicar política de scroll seleccionada
     try:

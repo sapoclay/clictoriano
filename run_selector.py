@@ -251,6 +251,7 @@ def main():
     parser.add_argument('--url', help='URL a pasar al script CLI (cuando corresponda)')
     parser.add_argument('--link-wait', type=int, help='Tiempo (s) para pasar como --link-wait al script CLI')
     parser.add_argument('--install-chromedriver', action='store_true', help='Intentar descargar e instalar ChromeDriver (Windows solamente)')
+    parser.add_argument('--browser', choices=['chrome', 'chromium', 'firefox'], help='Navegador a usar para el script (chrome|chromium|firefox)')
     args = parser.parse_args()
 
     scripts = obtener_scripts()
@@ -347,6 +348,8 @@ def main():
             cmd = [ruta_script, url]
             if args.link_wait is not None:
                 cmd += ['--link-wait', str(args.link_wait)]
+            if args.browser:
+                cmd += ['--browser', args.browser]
             subprocess.run(cmd, check=True)
         else:
             subprocess.run([ruta_script], check=True)
