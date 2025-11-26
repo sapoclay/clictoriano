@@ -1,6 +1,8 @@
 # ClicToriano
 
-ClicToriano es una herramienta en Python que carga una página web en Chrome/Chromium y realiza clics automáticos en enlaces (puede abrir enlaces externos en nuevas pestañas). Incluye modo CLI y una interfaz gráfica ligera.
+<img width="768" height="768" alt="logo" src="https://github.com/user-attachments/assets/92a7848c-14a3-4805-8426-25d6886b8f14" />
+
+ClicToriano es una herramienta en Python que carga una página web en Chrome/Chromium y realiza clics automáticos en enlaces (puede abrir enlaces externos en nuevas pestañas), para un uso en particular. Incluye modo CLI y una interfaz gráfica ligera.
 Consulta la documentación en español en `docs/USO.md` para instrucciones detalladas sobre instalación y uso, incluyendo pasos específicos para Windows.
 **Contenido del repositorio**
 - `click_enlaces.py`: lógica principal (Selenium + Chrome)
