@@ -40,6 +40,8 @@ class ClicTorisGUI(ctk.CTk):
         self.external_policy = 'new_tab'
         # Política por defecto para scroll antes de clicar: 'none'|'small'|'medium'|'full'
         self.scroll_policy = 'none'
+        # Navegador por defecto: 'chrome' | 'chromium' | 'firefox'
+        self.browser = 'chrome'
         # Intentar cargar preferencia persistente
         try:
             cfg_file = Path.home() / '.clictoriano' / 'config.json'
@@ -52,6 +54,10 @@ class ClicTorisGUI(ctk.CTk):
                     sp = data.get('scroll_policy')
                     if sp in ('none', 'small', 'medium', 'full', 'random'):
                         self.scroll_policy = sp
+                    # Cargar preferencia de navegador si existe
+                    b = data.get('browser')
+                    if b in ('chrome', 'chromium', 'firefox'):
+                        self.browser = b
         except Exception:
             pass
         
@@ -243,14 +249,15 @@ class ClicTorisGUI(ctk.CTk):
         """Muestra la ventana de configuración donde el usuario elige cómo tratar enlaces externos"""
         cfg = ctk.CTkToplevel(self)
         cfg.title("Configuración")
-        cfg.geometry("420x220")
-        cfg.resizable(False, False)
+        # Ventana más grande para mostrar todas las opciones (incluido selector de navegador)
+        cfg.geometry("520x320")
+        cfg.resizable(True, True)
         cfg.transient(self)
         cfg.grab_set()
 
         # Centrar dialog
-        x = self.winfo_x() + (self.winfo_width() // 2) - 210
-        y = self.winfo_y() + (self.winfo_height() // 2) - 110
+        x = self.winfo_x() + (self.winfo_width() // 2) - 260
+        y = self.winfo_y() + (self.winfo_height() // 2) - 160
         cfg.geometry(f"+{x}+{y}")
 
         ctk.CTkLabel(cfg, text="Comportamiento para enlaces externos:", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(16,8))
@@ -303,6 +310,29 @@ class ClicTorisGUI(ctk.CTk):
         except Exception:
             pass
 
+        # --- Selector de Navegador ---
+        ctk.CTkLabel(cfg, text="Navegador:", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(6,6))
+        browser_options = {
+            "Chrome": 'chrome',
+            "Chromium": 'chromium',
+            "Firefox": 'firefox'
+        }
+        # Selección actual (etiqueta)
+        current_browser_label = None
+        for k, v in browser_options.items():
+            if v == self.browser:
+                current_browser_label = k
+                break
+        if not current_browser_label:
+            current_browser_label = list(browser_options.keys())[0]
+
+        browser_opt = ctk.CTkOptionMenu(cfg, values=list(browser_options.keys()))
+        browser_opt.pack(pady=(0,12))
+        try:
+            browser_opt.set(current_browser_label)
+        except Exception:
+            pass
+
         def guardar():
             try:
                 sel_label = opt.get()
@@ -315,6 +345,12 @@ class ClicTorisGUI(ctk.CTk):
             except Exception:
                 sel_scroll_label = current_scroll_label
             self.scroll_policy = scroll_options.get(sel_scroll_label, 'none')
+            # Obtener selección de navegador
+            try:
+                sel_browser_label = browser_opt.get()
+            except Exception:
+                sel_browser_label = current_browser_label
+            self.browser = browser_options.get(sel_browser_label, 'chrome')
             # Guardar preferencia en ~/.clictoriano/config.json (mantener otras claves si existen)
             try:
                 cfg_dir = Path.home() / '.clictoriano'
@@ -329,6 +365,7 @@ class ClicTorisGUI(ctk.CTk):
                         cfg_data = {}
                 cfg_data['external_policy'] = self.external_policy
                 cfg_data['scroll_policy'] = self.scroll_policy
+                cfg_data['browser'] = self.browser
                 with cfg_file.open('w', encoding='utf-8') as f:
                     json.dump(cfg_data, f)
             except Exception:
@@ -431,13 +468,21 @@ class ClicTorisGUI(ctk.CTk):
                                        command=self.detener_programa)
         self.stop_button.grid(row=14, column=0, padx=20, pady=(0, 20), sticky="ew")
 
+        # Botón para comprobar/actualizar driver manualmente
+        self.driver_btn = ctk.CTkButton(self.sidebar_frame, text="🔧 Comprobar/Actualizar driver",
+                         fg_color="transparent", border_width=1,
+                         text_color=("gray10", "#DCE4EE"),
+                         height=30,
+                         command=self._on_check_update_driver)
+        self.driver_btn.grid(row=15, column=0, padx=20, pady=(0, 10), sticky="ew")
+
         # Apariencia
         self.appearance_mode_label = ctk.CTkLabel(self.sidebar_frame, text="Tema:", anchor="w")
-        self.appearance_mode_label.grid(row=15, column=0, padx=20, pady=(10, 0), sticky="w")
+        self.appearance_mode_label.grid(row=16, column=0, padx=20, pady=(10, 0), sticky="w")
         self.appearance_mode_optionemenu = ctk.CTkOptionMenu(self.sidebar_frame, 
-                                                           values=["System", "Dark", "Light"],
-                                                           command=self.change_appearance_mode_event)
-        self.appearance_mode_optionemenu.grid(row=16, column=0, padx=20, pady=(0, 20), sticky="ew")
+                                   values=["System", "Dark", "Light"],
+                                   command=self.change_appearance_mode_event)
+        self.appearance_mode_optionemenu.grid(row=17, column=0, padx=20, pady=(0, 20), sticky="ew")
         self.appearance_mode_optionemenu.set("Dark")
 
     def crear_area_principal(self):
@@ -560,6 +605,17 @@ class ClicTorisGUI(ctk.CTk):
         if not self.validar_campos():
             return
         
+        # Antes de iniciar, comprobar compatibilidad de webdriver si se eligió Firefox
+        try:
+            if getattr(self, 'browser', 'chrome') == 'firefox':
+                ok = self._check_firefox_driver_compat()
+                if not ok:
+                    # Usuario decidió no continuar o la actualización falló
+                    return
+        except Exception:
+            # Si hay cualquier error en la comprobación, continuar y dejar que el proceso normal maneje el fallo
+            pass
+
         # UI Updates
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
@@ -592,7 +648,8 @@ class ClicTorisGUI(ctk.CTk):
                 intervalo_max=intervalo_max,
                 modo_headless=headless,
                 max_clicks=max_clicks,
-                external_links_policy=self.external_policy
+                external_links_policy=self.external_policy,
+                browser=self.browser
             )
             # Aplicar política de scroll seleccionada desde la GUI
             try:
@@ -645,6 +702,312 @@ class ClicTorisGUI(ctk.CTk):
             self.after(0, lambda: self.agregar_log(f"\n❌ Error: {str(e)}\n"))
         finally:
             self.after(0, self.finalizar_programa)
+
+    def _get_executable_version(self, cmd: list) -> str | None:
+        """Ejecuta `cmd` (lista) y extrae la versión primaria de la salida.
+
+        Devuelve la primera pareja de dígitos separadas por puntos encontrada, p.ej. '0.34.0' o '145.0.2'.
+        """
+        import subprocess, re
+        try:
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True, timeout=6)
+            m = re.search(r"(\d+\.\d+(?:\.\d+)*)", out)
+            if m:
+                return m.group(1)
+        except Exception:
+            return None
+        return None
+
+    def _check_firefox_driver_compat(self) -> bool:
+        """Comprueba versiones de `firefox` y `geckodriver`. Si detecta posible incompatibilidad,
+        muestra un diálogo que permite actualizar el driver ahora.
+
+        Devuelve True para continuar con el inicio, False para abortar.
+        """
+        import shutil, subprocess
+        # Detectar firefox
+        firefox_ver = self._get_executable_version(['firefox', '--version'])
+        # Detectar geckodriver en PATH
+        gecko_path = shutil.which('geckodriver')
+        gecko_ver = None
+        if gecko_path:
+            gecko_ver = self._get_executable_version([gecko_path, '--version'])
+
+        # Si no hay geckodriver, ofrecer instalarlo
+        if not gecko_path:
+            resp = messagebox.askyesno("Geckodriver no encontrado", (
+                "No se ha detectado 'geckodriver' en PATH.\n"
+                "¿Deseas intentar descargar/instalar geckodriver ahora?"
+            ))
+            if not resp:
+                return True
+            # Intentar instalar
+            try:
+                from webdrivers import ensure_webdriver
+                self.agregar_log("Iniciando instalación de geckodriver...\n")
+                ensure_webdriver('firefox', force_install=True)
+                self.agregar_log("Instalación finalizada. Intenta iniciar de nuevo.")
+                return True
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo instalar geckodriver: {e}")
+                return False
+
+        # Si ambos detectados, comparar versiones de forma conservadora: si son diferentes, proponer actualización
+        if firefox_ver and gecko_ver and firefox_ver not in gecko_ver:
+            # Mostrar diálogo con información y opción de actualizar ahora
+            msg = (
+                f"Se detectaron versiones potencialmente incompatibles:\n\n"
+                f"Firefox: {firefox_ver}\n"
+                f"Geckodriver en PATH ({gecko_path}): {gecko_ver}\n\n"
+                "¿Deseas intentar actualizar/instalar ahora el geckodriver recomendado?"
+            )
+            resp = messagebox.askyesno("Incompatibilidad detectada de geckodriver", msg)
+            if not resp:
+                return True
+            try:
+                from webdrivers import ensure_webdriver
+                self.agregar_log("Intentando actualizar geckodriver...\n")
+                ensure_webdriver('firefox', force_install=True)
+                self.agregar_log("Actualización finalizada. Continúa el inicio.")
+                return True
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo actualizar geckodriver: {e}")
+                return False
+
+        return True
+
+    def _show_progress_modal(self, title: str, message: str):
+        """Muestra una ventana modal con una progressbar indeterminada.
+
+        Devuelve la tupla (modal_window, progressbar)
+        """
+        modal = ctk.CTkToplevel(self)
+        modal.title(title)
+        modal.geometry("420x120")
+        modal.transient(self)
+        modal.grab_set()
+        modal.resizable(False, False)
+        # Centrar modal
+        x = self.winfo_x() + (self.winfo_width() // 2) - 210
+        y = self.winfo_y() + (self.winfo_height() // 2) - 60
+        modal.geometry(f"+{x}+{y}")
+
+        lbl = ctk.CTkLabel(modal, text=message)
+        lbl.pack(pady=(18, 6), padx=12)
+        pb = ctk.CTkProgressBar(modal, mode='indeterminate')
+        pb.pack(fill='x', padx=20, pady=(6, 12))
+        try:
+            pb.start(10)
+        except Exception:
+            pass
+        return modal, pb
+
+    def _on_check_update_driver(self):
+        """Manejador del botón 'Comprobar/Actualizar driver' en la GUI."""
+        # Ejecutar en hilo para no bloquear la GUI
+        def worker():
+            try:
+                from webdrivers import ensure_webdriver
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Error", f"Módulo webdrivers no disponible: {e}"))
+                self.after(0, lambda: self.agregar_log("Error: módulo webdrivers no disponible\n"))
+                self.after(0, close_modal)
+                return
+
+            self.after(0, lambda: self.agregar_log("Comprobando/instalando webdriver...\n"))
+            # status callback para mostrar el archivo/versión objetivo en el modal
+            def status_cb(event: str, data: dict | None = None):
+                try:
+                    if event == 'download_start' and isinstance(data, dict):
+                        info = data
+                        ver = info.get('version') or info.get('archive') or info.get('url')
+                        txt = f"Descargando: {ver}"
+                        self.after(0, lambda: lbl.configure(text=txt))
+                except Exception:
+                    pass
+
+            try:
+                path_instalado = ensure_webdriver(self.browser, force_install=False, progress_callback=progress_cb, status_callback=status_cb)
+                # Si llegó aquí, instalación/comprobación fue exitosa (o ya estaba en PATH)
+                self.after(0, lambda: self.agregar_log(f"webdriver disponible: {path_instalado}\n"))
+                # Mostrar resultado en el modal con botón para copiar ruta
+                def show_result():
+                    try:
+                        # Limpiar widgets de progreso
+                        try:
+                            pb_det.pack_forget()
+                        except Exception:
+                            pass
+                        try:
+                            pb_ind.pack_forget()
+                            pb_ind.stop()
+                        except Exception:
+                            pass
+                        pct_label.configure(text="Completado")
+                        # Label con ruta y botón copiar
+                        path_lbl = ctk.CTkLabel(modal, text=f"Instalado en: {path_instalado}")
+                        path_lbl.pack(pady=(6,6))
+                        def copiar():
+                            try:
+                                self.clipboard_clear()
+                                self.clipboard_append(path_instalado)
+                                self.after(0, lambda: self.agregar_log(f"Ruta copiada al portapapeles: {path_instalado}\n"))
+                            except Exception:
+                                pass
+
+                        btn_copy = ctk.CTkButton(modal, text="Copiar ruta al portapapeles", command=copiar)
+                        btn_copy.pack(pady=(0,6))
+                        # Botón cerrar
+                        btn_close = ctk.CTkButton(modal, text="Cerrar", command=close_modal)
+                        btn_close.pack(pady=(0,8))
+                    except Exception as e:
+                        try:
+                            messagebox.showinfo("Info", f"Instalado en: {path_instalado}")
+                        except Exception:
+                            pass
+
+                self.after(0, show_result)
+            except Exception as e:
+                # Intentar fallback con force_install
+                try:
+                    self.after(0, lambda: self.agregar_log(f"Intentando forzar instalación: {e}\n"))
+                    path_instalado = ensure_webdriver(self.browser, force_install=True, progress_callback=progress_cb, status_callback=status_cb)
+                    self.after(0, lambda: self.agregar_log(f"Instalación forzada completada: {path_instalado}\n"))
+                    def show_result2():
+                        try:
+                            try:
+                                pb_det.pack_forget()
+                            except Exception:
+                                pass
+                            try:
+                                pb_ind.pack_forget()
+                                pb_ind.stop()
+                            except Exception:
+                                pass
+                            pct_label.configure(text="Completado")
+                            path_lbl = ctk.CTkLabel(modal, text=f"Instalado en: {path_instalado}")
+                            path_lbl.pack(pady=(6,6))
+                            def copiar2():
+                                try:
+                                    self.clipboard_clear()
+                                    self.clipboard_append(path_instalado)
+                                    self.after(0, lambda: self.agregar_log(f"Ruta copiada al portapapeles: {path_instalado}\n"))
+                                except Exception:
+                                    pass
+                            btn_copy = ctk.CTkButton(modal, text="Copiar ruta al portapapeles", command=copiar2)
+                            btn_copy.pack(pady=(0,6))
+                            btn_close = ctk.CTkButton(modal, text="Cerrar", command=close_modal)
+                            btn_close.pack(pady=(0,8))
+                        except Exception:
+                            pass
+
+                    self.after(0, show_result2)
+                except Exception as e2:
+                    self.after(0, lambda: messagebox.showerror("Error", f"No se pudo instalar el webdriver: {e2}"))
+                    self.after(0, lambda: self.agregar_log(f"Error instalando webdriver: {e2}\n"))
+                    self.after(0, close_modal)
+
+        # Crear modal con barra determinista y etiqueta de porcentaje
+        modal = ctk.CTkToplevel(self)
+        modal.title("Instalando webdriver")
+        # Aumentar altura para que se vean los botones al finalizar
+        modal.geometry("520x220")
+        modal.transient(self)
+        # Intentar grab_set de forma segura: actualizar la ventana y reintentar si falla
+        try:
+            modal.update_idletasks()
+            modal.grab_set()
+        except Exception:
+            # Programar un intento breve después para cuando la ventana sea viewable
+            try:
+                self.after(50, lambda: (modal.update_idletasks(), modal.grab_set()))
+            except Exception:
+                pass
+        # NO usar grab_set_global ni deshabilitar la ventana principal — pueden bloquear el sistema en algunos entornos.
+        modal.resizable(False, False)
+        x = self.winfo_x() + (self.winfo_width() // 2) - 260
+        y = self.winfo_y() + (self.winfo_height() // 2) - 110
+        modal.geometry(f"+{x}+{y}")
+
+        lbl = ctk.CTkLabel(modal, text="Descargando/instalando driver, por favor espera...")
+        lbl.pack(pady=(12, 6), padx=12)
+        # Barra determinista (visible por defecto)
+        pb_det = ctk.CTkProgressBar(modal)
+        pb_det.pack(fill='x', padx=20, pady=(6, 6))
+        # Barra indeterminada (oculta inicialmente)
+        pb_ind = ctk.CTkProgressBar(modal, mode='indeterminate')
+        # no la empaquetamos aún
+        # Etiqueta de porcentaje
+        pct_label = ctk.CTkLabel(modal, text="0%")
+        pct_label.pack(pady=(0, 12))
+
+        def close_modal():
+            try:
+                # Parar barra indeterminada si estaba corriendo
+                try:
+                    pb_ind.stop()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            try:
+                modal.grab_release()
+            except Exception:
+                pass
+            try:
+                modal.destroy()
+            except Exception:
+                pass
+
+        # Callback de progreso llamado desde el hilo de descarga
+        def progress_cb(downloaded: int, total: int | None):
+            # Si el servidor proporcionó total, usamos la barra determinista
+            if total and total > 0:
+                frac = min(max(downloaded / total, 0.0), 1.0)
+                pct = int(frac * 100)
+                # Asegurar que la barra determinista esté visible
+                def upd_det():
+                    try:
+                        # si pb_ind está visible, ocultarlo
+                        try:
+                            pb_ind.pack_forget()
+                        except Exception:
+                            pass
+                        # mostrar pb_det si no está visible
+                        try:
+                            pb_det.pack(fill='x', padx=20, pady=(6, 6))
+                        except Exception:
+                            pass
+                        pb_det.set(frac)
+                        pct_label.configure(text=f"{pct}%")
+                    except Exception:
+                        pass
+
+                self.after(0, upd_det)
+            else:
+                # Sin Content-Length: mostrar barra indeterminada
+                def upd_ind():
+                    try:
+                        # ocultar determinista
+                        try:
+                            pb_det.pack_forget()
+                        except Exception:
+                            pass
+                        # mostrar indeterminada y arrancarla
+                        try:
+                            pb_ind.pack(fill='x', padx=20, pady=(6, 6))
+                            pb_ind.start(20)
+                        except Exception:
+                            pass
+                        pct_label.configure(text="...")
+                    except Exception:
+                        pass
+
+                self.after(0, upd_ind)
+
+        # Iniciar thread del worker; el worker usará la closure `progress_cb`.
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
 
     def detener_programa(self):
         self.programa_activo = False

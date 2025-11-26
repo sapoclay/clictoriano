@@ -109,6 +109,11 @@ class ClicToris:
         import os
         import subprocess
         
+        # Asegurar que ~/.local/bin esté en PATH para geckodriver y otros binarios
+        local_bin = os.path.expanduser('~/.local/bin')
+        if local_bin not in os.environ.get('PATH', ''):
+            os.environ['PATH'] = local_bin + ':' + os.environ.get('PATH', '')
+        
         try:
             # Evitar que dos hilos lancen el driver simultáneamente
             with self._driver_lock:
@@ -151,7 +156,27 @@ class ClicToris:
                     print(f"✓ Firefox iniciado correctamente")
                     return True
                 except Exception as e:
+                    # Al fallar, intentar instalar/usar geckodriver compatible si el módulo webdrivers está disponible
                     print(f"⚠️  Error iniciando Firefox: {e}")
+                    try:
+                        from webdrivers import ensure_webdriver
+                        try:
+                            print("Intentando instalar/actualizar geckodriver compatible (esto puede descargar un archivo)...")
+                            driver_path = ensure_webdriver('firefox', quiet=False, force_install=True)
+                            if driver_path:
+                                try:
+                                    # Intentar iniciar con el driver instalado explícitamente
+                                    serv = FirefoxService(executable_path=driver_path)
+                                    self.driver = webdriver.Firefox(service=serv, options=firefox_options)
+                                    print(f"✓ Firefox iniciado correctamente usando geckodriver: {driver_path}")
+                                    return True
+                                except Exception as e2:
+                                    print(f"⚠️  Reintento con geckodriver descargado falló: {e2}")
+                        except Exception as ie:
+                            print(f"⚠️  No se pudo instalar/actualizar geckodriver: {ie}")
+                    except Exception:
+                        pass
+                    # Si todo falla, re-raise para que el llamador lo maneje
                     raise e
 
             chrome_options = Options()

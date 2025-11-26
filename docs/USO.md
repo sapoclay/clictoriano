@@ -1,5 +1,3 @@
-v1.0
-
 # Uso de ClicToriano
 
 Resumen rápido:

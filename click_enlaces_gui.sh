@@ -3,6 +3,9 @@
 
 cd "$(dirname "$0")"
 
+# Asegurar que ~/.local/bin esté en PATH para geckodriver
+export PATH="$HOME/.local/bin:$PATH"
+
 # Verificar si existe el entorno virtual
 if [ ! -d "venv" ]; then
     echo "📦 Creando entorno virtual..."

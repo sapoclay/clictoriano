@@ -15,6 +15,10 @@ import subprocess
 import sys
 import argparse
 import shutil
+try:
+    from webdrivers import ensure_webdriver
+except Exception:
+    ensure_webdriver = None
 
 
 def obtener_scripts():
@@ -250,26 +254,64 @@ def main():
     parser.add_argument('--gui', action='store_true', help='Ejecutar el script GUI (no interactivo)')
     parser.add_argument('--url', help='URL a pasar al script CLI (cuando corresponda)')
     parser.add_argument('--link-wait', type=int, help='Tiempo (s) para pasar como --link-wait al script CLI')
-    parser.add_argument('--install-chromedriver', action='store_true', help='Intentar descargar e instalar ChromeDriver (Windows solamente)')
+    parser.add_argument('--install-chromedriver', action='store_true', help='Intentar descargar e instalar ChromeDriver (compatibilidad)')
+    parser.add_argument('--install-webdriver', action='store_true', help='Intentar descargar e instalar el webdriver adecuado (chrome|firefox)')
     parser.add_argument('--browser', choices=['chrome', 'chromium', 'firefox'], help='Navegador a usar para el script (chrome|chromium|firefox)')
     args = parser.parse_args()
 
     scripts = obtener_scripts()
 
-    # Si el usuario pidió intentar instalar chromedriver, manejarlo y salir
-    if args.install_chromedriver:
-        if platform.system() != 'Windows':
-            print('La opción --install-chromedriver está pensada para Windows. No se realizará ninguna acción en este SO.')
-            sys.exit(0)
-        print('Intentando descargar/instalar ChromeDriver para Windows...')
-        ensure_chromedriver()
-        # Verificar si ahora está disponible
-        if shutil.which('chromedriver') or os.path.exists(os.path.join(os.getenv('LOCALAPPDATA') or os.path.expanduser('~\\AppData\\Local'), 'chromedriver', 'chromedriver.exe')):
-            print('ChromeDriver detectado correctamente tras la instalación.')
-            sys.exit(0)
+    # Si el usuario pidió intentar instalar webdrivers, manejarlo y salir
+    if args.install_chromedriver or args.install_webdriver:
+        target_browser = args.browser or 'chrome'
+        print(f'Intentando descargar/instalar webdriver para: {target_browser}...')
+        if ensure_webdriver:
+            try:
+                path = ensure_webdriver(target_browser)
+                if path and os.path.exists(path):
+                    print(f'Webdriver detectado/instalado en: {path}')
+                    # Si estamos en Windows y la instalación quedó en LOCALAPPDATA, mostrar snippet de PowerShell
+                    if platform.system() == 'Windows':
+                        local = os.getenv('LOCALAPPDATA') or os.path.expanduser('~\\AppData\\Local')
+                        if str(path).lower().startswith(str(local).lower()):
+                            snippet = (
+                                "$cd = Join-Path $env:LOCALAPPDATA 'webdrivers'\n"
+                                "if (-not (Test-Path $cd)) { New-Item -ItemType Directory -Path $cd -Force }\n"
+                                "$old = [Environment]::GetEnvironmentVariable('Path', 'User')\n"
+                                "if ($old -notlike \"*$cd*\") {\n"
+                                "    [Environment]::SetEnvironmentVariable('Path', \"$old;$cd\", 'User')\n"
+                                "    Write-Output \"Ruta agregada al PATH de usuario: $cd\"\n"
+                                "} else {\n"
+                                "    Write-Output \"La ruta ya está en el PATH de usuario: $cd\"\n"
+                                "}\n"
+                                "Write-Output 'Reinicia la terminal o la sesión para que los cambios surtan efecto.'\n"
+                            )
+                            print('\nEjecuta en PowerShell (como usuario) para añadir la carpeta al PATH de usuario:\n')
+                            print(snippet)
+                    sys.exit(0)
+                else:
+                    print('No se pudo instalar el webdriver automáticamente. Consulta docs/USO.md para pasos manuales.')
+                    sys.exit(1)
+            except Exception as e:
+                print(f'Error instalando webdriver: {e}')
+                sys.exit(1)
         else:
-            print('No se pudo instalar ChromeDriver automáticamente. Consulta docs/USO.md para pasos manuales.')
-            sys.exit(1)
+            # Fallback a la implementación local (ensure_chromedriver) si existe
+            if args.install_chromedriver:
+                if platform.system() != 'Windows':
+                    print('La opción --install-chromedriver está pensada para Windows. No se realizará ninguna acción en este SO.')
+                    sys.exit(0)
+                print('Intentando descargar/instalar ChromeDriver para Windows (fallback)...')
+                ensure_chromedriver()
+                if shutil.which('chromedriver') or os.path.exists(os.path.join(os.getenv('LOCALAPPDATA') or os.path.expanduser('~\\AppData\\Local'), 'chromedriver', 'chromedriver.exe')):
+                    print('ChromeDriver detectado correctamente tras la instalación (fallback).')
+                    sys.exit(0)
+                else:
+                    print('No se pudo instalar ChromeDriver automáticamente (fallback).')
+                    sys.exit(1)
+            else:
+                print('No hay instalador disponible en este entorno (module webdrivers no cargado).')
+                sys.exit(1)
 
     # Modo no interactivo: elegir por flags
     if args.cli or args.gui:
@@ -314,9 +356,16 @@ def main():
         print(f"Script no encontrado: {ruta_script}")
         sys.exit(1)
 
-    # En Linux, antes de ejecutar el CLI, aseguramos ChromeDriver correcto
+    # En Linux, antes de ejecutar el CLI, aseguramos el webdriver correspondiente
     if platform.system() != "Windows" and nombre_script == "click_enlaces.sh":
-        ensure_chromedriver()
+        # Usar ensure_webdriver si está disponible, sino fallback a ensure_chromedriver
+        if ensure_webdriver:
+            try:
+                ensure_webdriver(args.browser or 'chrome')
+            except Exception as e:
+                print(f"Advertencia: no fue posible ejecutar ensure_webdriver: {e}")
+        else:
+            ensure_chromedriver()
         os.chmod(ruta_script, 0o755)
     # En Windows, si chromedriver no está presente, mostrar instrucciones rápidas
     if platform.system() == 'Windows':
