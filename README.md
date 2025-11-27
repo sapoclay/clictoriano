@@ -57,6 +57,8 @@ Nota sobre Snap: en algunas distribuciones `chromedriver` puede venir como paque
 
 ### Interfaz gráfica (GUI)
 
+<img width="1916" height="1042" alt="gui" src="https://github.com/user-attachments/assets/bc673367-28a7-4b54-9c37-e994e54ea72a" />
+
 ```bash
 ./click_enlaces_gui.sh
 ```
