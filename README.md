@@ -47,6 +47,8 @@ Nota sobre Snap: en algunas distribuciones `chromedriver` puede venir como paque
 
 ## Uso
 
+<img width="752" height="111" alt="run_selector" src="https://github.com/user-attachments/assets/42283d2b-a0d1-4bed-99d7-31389ed1c78f" />
+
 ### Desde la línea de comandos (CLI)
 
 ```bash
