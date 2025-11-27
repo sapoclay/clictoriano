@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 
 class ClicToris:
-    def __init__(self, url, intervalo_min=5, intervalo_max=10, modo_headless=False, max_clicks=None, chrome_path=None, external_links_policy='new_tab', link_wait=10, browser='chrome'):
+    def __init__(self, url, intervalo_min=5, intervalo_max=10, modo_headless=False, max_clicks=None, chrome_path=None, external_links_policy='new_tab', link_wait=10, browser='chrome', javascript_enabled=True, secure_dns_enabled=False):
         """
         Inicializa el programa de clic automático
         
@@ -55,6 +55,10 @@ class ClicToris:
         self.scroll_policy = 'none'
         # Tiempo máximo (s) para esperar enlaces dinámicos tras cargar la página
         self.link_wait = link_wait
+        # Habilitar o deshabilitar JavaScript
+        self.javascript_enabled = javascript_enabled
+        # Habilitar o deshabilitar Secure DNS (DoH)
+        self.secure_dns_enabled = secure_dns_enabled
 
     def _apply_scroll(self, elemento, policy=None):
         """Aplica scroll según la política configurada antes de interactuar con un elemento.
@@ -137,6 +141,17 @@ class ClicToris:
                 firefox_options = FirefoxOptions()
                 if self.modo_headless:
                     firefox_options.headless = True
+                
+                # Configurar JavaScript para Firefox
+                firefox_options.set_preference("javascript.enabled", self.javascript_enabled)
+
+                # Configurar Secure DNS (DoH) para Firefox
+                if self.secure_dns_enabled:
+                    # 2 = TRR (Trusted Recursive Resolver) preferred
+                    firefox_options.set_preference("network.trr.mode", 2)
+                    # Usar Cloudflare como proveedor
+                    firefox_options.set_preference("network.trr.uri", "https://mozilla.cloudflare-dns.com/dns-query")
+
                 # Intentar localizar binario de Firefox si se indicó chrome_path o variables de entorno
                 ff_env_candidates = [
                     self.chrome_path,
@@ -185,6 +200,20 @@ class ClicToris:
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
             chrome_options.add_argument('--disable-gpu')
+            
+            # Configurar JavaScript para Chrome/Chromium
+            # 1 = Enabled, 2 = Disabled
+            js_state = 1 if self.javascript_enabled else 2
+            chrome_options.add_experimental_option("prefs", {
+                "profile.managed_default_content_settings.javascript": js_state
+            })
+
+            # Configurar Secure DNS (DoH) para Chrome
+            if self.secure_dns_enabled:
+                chrome_options.add_argument('--dns-over-https-mode=secure')
+                # Usar Google DNS
+                chrome_options.add_argument('--dns-over-https-templates=https://dns.google/dns-query{?dns}')
+
             # Si no estamos en modo headless, iniciar Chrome directamente en la URL
             # objetivo para evitar que aparezca primero una pestaña about:blank.
             if not self.modo_headless and getattr(self, 'url', None):
@@ -757,6 +786,18 @@ Ejemplos de uso:
         help='Navegador a usar: chrome (por defecto), chromium o firefox'
     )
 
+    parser.add_argument(
+        '--disable-javascript',
+        action='store_true',
+        help='Deshabilitar JavaScript en el navegador'
+    )
+
+    parser.add_argument(
+        '--secure-dns',
+        action='store_true',
+        help='Habilitar DNS sobre HTTPS (Secure DNS) para evitar bloqueos'
+    )
+
     args = parser.parse_args()
 
     # Validar la URL
@@ -798,6 +839,8 @@ Ejemplos de uso:
     # Crear y ejecutar el programa
     programa = ClicToris(
         url=args.url,
+        javascript_enabled=not args.disable_javascript,
+        secure_dns_enabled=args.secure_dns,
         intervalo_min=intervalo_min,
         intervalo_max=intervalo_max,
         modo_headless=args.headless,

@@ -42,6 +42,10 @@ class ClicTorisGUI(ctk.CTk):
         self.scroll_policy = 'none'
         # Navegador por defecto: 'chrome' | 'chromium' | 'firefox'
         self.browser = 'chrome'
+        # JavaScript habilitado por defecto: True
+        self.javascript_enabled = True
+        # Secure DNS (DoH) deshabilitado por defecto
+        self.secure_dns_enabled = False
         # Intentar cargar preferencia persistente
         try:
             cfg_file = Path.home() / '.clictoriano' / 'config.json'
@@ -58,6 +62,14 @@ class ClicTorisGUI(ctk.CTk):
                     b = data.get('browser')
                     if b in ('chrome', 'chromium', 'firefox'):
                         self.browser = b
+                    # Cargar preferencia de javascript
+                    js = data.get('javascript_enabled')
+                    if js is not None:
+                        self.javascript_enabled = bool(js)
+                    # Cargar preferencia de secure dns
+                    sdns = data.get('secure_dns_enabled')
+                    if sdns is not None:
+                        self.secure_dns_enabled = bool(sdns)
         except Exception:
             pass
         
@@ -333,6 +345,24 @@ class ClicTorisGUI(ctk.CTk):
         except Exception:
             pass
 
+        # --- Opción JavaScript ---
+        ctk.CTkLabel(cfg, text="JavaScript:", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(6,6))
+        js_switch = ctk.CTkSwitch(cfg, text="Activar JavaScript")
+        js_switch.pack(pady=(0,12))
+        if self.javascript_enabled:
+            js_switch.select()
+        else:
+            js_switch.deselect()
+
+        # --- Opción Secure DNS ---
+        ctk.CTkLabel(cfg, text="DNS Seguro (Bypass bloqueos):", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(6,6))
+        dns_switch = ctk.CTkSwitch(cfg, text="Activar DNS sobre HTTPS")
+        dns_switch.pack(pady=(0,12))
+        if self.secure_dns_enabled:
+            dns_switch.select()
+        else:
+            dns_switch.deselect()
+
         def guardar():
             try:
                 sel_label = opt.get()
@@ -351,6 +381,10 @@ class ClicTorisGUI(ctk.CTk):
             except Exception:
                 sel_browser_label = current_browser_label
             self.browser = browser_options.get(sel_browser_label, 'chrome')
+            # Obtener selección de JavaScript
+            self.javascript_enabled = bool(js_switch.get())
+            # Obtener selección de Secure DNS
+            self.secure_dns_enabled = bool(dns_switch.get())
             # Guardar preferencia en ~/.clictoriano/config.json (mantener otras claves si existen)
             try:
                 cfg_dir = Path.home() / '.clictoriano'
@@ -366,6 +400,8 @@ class ClicTorisGUI(ctk.CTk):
                 cfg_data['external_policy'] = self.external_policy
                 cfg_data['scroll_policy'] = self.scroll_policy
                 cfg_data['browser'] = self.browser
+                cfg_data['javascript_enabled'] = self.javascript_enabled
+                cfg_data['secure_dns_enabled'] = self.secure_dns_enabled
                 with cfg_file.open('w', encoding='utf-8') as f:
                     json.dump(cfg_data, f)
             except Exception:
@@ -649,7 +685,9 @@ class ClicTorisGUI(ctk.CTk):
                 modo_headless=headless,
                 max_clicks=max_clicks,
                 external_links_policy=self.external_policy,
-                browser=self.browser
+                browser=self.browser,
+                javascript_enabled=self.javascript_enabled,
+                secure_dns_enabled=self.secure_dns_enabled
             )
             # Aplicar política de scroll seleccionada desde la GUI
             try:
